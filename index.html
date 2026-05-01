@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Polygon Beat Slicer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <div id="app">
+      <div id="controls">
+        <div id="drop-zone">
+          <span class="drop-label">Drop audio file or click</span>
+        </div>
+        <input type="file" id="file-input" accept="audio/*" hidden />
+        <div id="controls-row">
+          <button id="play-btn" disabled>▶ PLAY</button>
+          <button id="reset-btn">↻ RESET</button>
+          <select id="mode-select">
+            <option value="cues">Cue Sheet</option>
+            <option value="beat">Beat Detection</option>
+          </select>
+          <div id="threshold-group" style="display:none">
+            <label for="threshold-slider">Threshold</label>
+            <input type="range" id="threshold-slider" min="60" max="255" value="180" />
+            <span id="threshold-value">180</span>
+          </div>
+        </div>
+      </div>
+      <div id="canvas"></div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

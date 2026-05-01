@@ -1,0 +1,156 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  background: #08080a;
+  color: #f2f0eb;
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+}
+
+#controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 24px;
+  background: rgba(8, 8, 10, 0.85);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  z-index: 10;
+  backdrop-filter: blur(12px);
+}
+
+#drop-zone {
+  padding: 8px 18px;
+  border: 1.5px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  letter-spacing: 0.3px;
+  color: rgba(255, 255, 255, 0.5);
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 260px;
+}
+
+#drop-zone:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+#drop-zone.drag-over {
+  border-color: #00f0ff;
+  color: #00f0ff;
+  background: rgba(0, 240, 255, 0.05);
+}
+
+#drop-zone.loaded {
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #f2f0eb;
+}
+
+#drop-zone.default {
+  border-color: rgba(200, 255, 0, 0.2);
+  color: rgba(200, 255, 0, 0.7);
+}
+
+#drop-zone.default:hover {
+  border-color: rgba(200, 255, 0, 0.4);
+  color: rgba(200, 255, 0, 0.9);
+}
+
+#controls-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+button {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  padding: 8px 20px;
+  border: 1.5px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: transparent;
+  color: #f2f0eb;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+button.active {
+  background: rgba(255, 45, 111, 0.15);
+  border-color: #ff2d6f;
+  color: #ff2d6f;
+}
+
+select {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-size: 13px;
+  padding: 8px 14px;
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #f2f0eb;
+  cursor: pointer;
+  outline: none;
+}
+
+select option {
+  background: #1a1a1e;
+  color: #f2f0eb;
+}
+
+#threshold-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+#threshold-slider {
+  width: 80px;
+  accent-color: #00f0ff;
+}
+
+#threshold-value {
+  font-variant-numeric: tabular-nums;
+  min-width: 28px;
+}
+
+#canvas {
+  flex: 1;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+#canvas canvas {
+  display: block;
+}
