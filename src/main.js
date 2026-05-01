@@ -7,6 +7,8 @@ import {
   generateCutLine,
   splitPolygon,
   area,
+  centroid,
+  rescalePolygon,
 } from './geometry.js';
 
 // ── DOM ──
@@ -26,14 +28,15 @@ const audio = new AudioEngine();
 let isRunning = false;
 let animFrameId = null;
 let polygon = null;
-let minArea = 800;
-let usingDefaultTrack = false;
+let cutCount = 0;
+const maxCuts = 4;
+let zooming = false;
 
-// ── Demo cue sheet (130 BPM, every beat ≈ 0.46s) ──
+// ── Cue sheet (130 BPM) ──
 const bpm = 130;
 const beatDur = 60 / bpm;
 const demoCues = [];
-for (let i = 1; i <= 32; i++) {
+for (let i = 1; i <= 64; i++) {
   demoCues.push({ time: i * beatDur });
 }
 
@@ -55,7 +58,6 @@ async function init() {
     thresholdValue.textContent = e.target.value;
   });
 
-  // Load default synth track immediately
   await loadDefaultTrack();
 }
 
@@ -63,7 +65,6 @@ async function loadDefaultTrack() {
   await audio.init();
   const buffer = await generateDemoTrack(audio.ctx);
   audio.loadBuffer(buffer);
-  usingDefaultTrack = true;
   dropZone.textContent = 'Synth Beat (130 BPM)';
   dropZone.classList.add('loaded', 'default');
   playBtn.disabled = false;
@@ -72,17 +73,14 @@ async function loadDefaultTrack() {
 function spawnPolygon() {
   const w = renderer.screen.width;
   const h = renderer.screen.height;
-  const avgRadius = Math.min(w, h) * 0.3;
+  const avgRadius = Math.min(w, h) * 0.32;
   polygon = generateRandomPolygon(w / 2, h / 2, avgRadius, 6);
-  renderer.drawPolygon(polygon, renderer.nextColor());
+  renderer.drawPolygon(polygon);
 }
 
-// ── Slice logic ──
+// ── Core slice + zoom loop ──
 function doSlice() {
-  if (!polygon || area(polygon) < minArea) {
-    spawnPolygon();
-    return;
-  }
+  if (zooming) return;
 
   const cutLine = generateCutLine(polygon);
   const result = splitPolygon(polygon, cutLine);
@@ -91,9 +89,43 @@ function doSlice() {
   const [left, right] = result;
   const [flying, remaining] = area(left) < area(right) ? [left, right] : [right, left];
 
-  renderer.polygonPoints = polygon;
-  renderer.animateSlice(cutLine, flying, remaining, renderer.nextColor());
+  const bladeColor = renderer.nextBladeColor();
+  const colorTheFlying = Math.random() < 0.5;
+
+  renderer.animateSlice(cutLine, flying, remaining, bladeColor, colorTheFlying);
   polygon = remaining;
+  cutCount++;
+
+  // After 4 cuts, zoom into a colored piece
+  if (cutCount >= maxCuts) {
+    cutCount = 0;
+    const coloredPieces = renderer.cutPieces.filter(p => p.color !== null);
+
+    if (coloredPieces.length > 0) {
+      zooming = true;
+      const target = coloredPieces[Math.floor(Math.random() * coloredPieces.length)];
+
+      // Rescale that piece's shape to fill the screen
+      const w = renderer.screen.width;
+      const h = renderer.screen.height;
+      const newPoly = rescalePolygon(target.points, w / 2, h / 2, Math.min(w, h) * 0.32);
+
+      // Delay zoom slightly so the last cut animation plays
+      gsap.delayedCall(0.6, () => {
+        const tl = renderer.animateZoom(target, newPoly);
+        tl.call(() => {
+          polygon = newPoly;
+          zooming = false;
+        });
+      });
+    } else {
+      // No colored pieces — respawn fresh
+      gsap.delayedCall(0.6, () => {
+        renderer.reset();
+        spawnPolygon();
+      });
+    }
+  }
 }
 
 // ── Audio handlers ──
@@ -107,7 +139,6 @@ async function handleDrop(e) {
 async function loadAudio(file) {
   await audio.init();
   await audio.loadFile(file);
-  usingDefaultTrack = false;
   dropZone.textContent = file.name;
   dropZone.classList.remove('default');
   dropZone.classList.add('loaded');
@@ -158,6 +189,8 @@ function loop() {
 function handleReset() {
   stop();
   renderer.reset();
+  cutCount = 0;
+  zooming = false;
   spawnPolygon();
 }
 

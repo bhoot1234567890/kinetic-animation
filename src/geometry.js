@@ -114,3 +114,39 @@ export function area(polygon) {
   }
   return Math.abs(a) / 2;
 }
+
+// Place dots along polygon edges at regular intervals
+export function getEdgeDots(polygon, spacing = 18) {
+  const dots = [];
+  const n = polygon.length;
+  for (let i = 0; i < n; i++) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % n];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    const steps = Math.max(1, Math.floor(len / spacing));
+    for (let s = 0; s <= steps; s++) {
+      const t = s / (steps + 1);
+      dots.push({ x: a.x + dx * t, y: a.y + dy * t });
+    }
+  }
+  return dots;
+}
+
+// Rescale polygon points to fill a target area, centered at (cx, cy)
+export function rescalePolygon(points, cx, cy, targetRadius) {
+  const c = centroid(points);
+  // Find current max distance from centroid
+  let maxDist = 0;
+  for (const p of points) {
+    const d = Math.sqrt((p.x - c.x) ** 2 + (p.y - c.y) ** 2);
+    if (d > maxDist) maxDist = d;
+  }
+  if (maxDist === 0) return points;
+  const scale = targetRadius / maxDist;
+  return points.map(p => ({
+    x: cx + (p.x - c.x) * scale,
+    y: cy + (p.y - c.y) * scale,
+  }));
+}
