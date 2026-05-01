@@ -16,9 +16,11 @@ export class AudioEngine {
     this.beatThreshold = 180;
     this.beatCooldown = 200; // ms
     this.useBeatDetection = false;
+    this._loop = false;
   }
 
   async init() {
+    if (this.ctx) return;
     this.ctx = new (window.AudioContext || window.webkitAudioContext)();
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 256;
@@ -48,18 +50,41 @@ export class AudioEngine {
   }
 
   loadCues(cues) {
-    this.cues = cues.sort((a, b) => a.time - b.time);
+    this.cues = [...cues].sort((a, b) => a.time - b.time);
     this.nextCueIndex = 0;
   }
 
   play() {
     if (!this.buffer) return;
-    this.source = this.ctx.createBufferSource();
-    this.source.buffer = this.buffer;
-    this.source.connect(this.analyser);
-    this.source.loop = false;
-    this.source.start(0);
+    if (this.ctx.state === 'suspended') {
+      this.ctx.resume();
+    }
+    if (this.source) {
+      try { this.source.stop(); } catch {}
+      this.source = null;
+    }
+    const source = this.ctx.createBufferSource();
+    source.buffer = this.buffer;
+    source.connect(this.analyser);
+    source.loop = this._loop;
+    source.onended = () => {
+      if (this.source === source) this.source = null;
+    };
+    source.start(0);
+    this.source = source;
     this.startedAt = this.ctx.currentTime;
+    this.lastBeatTime = 0;
+  }
+
+  stop() {
+    if (this.source) {
+      try { this.source.stop(); } catch {}
+      this.source = null;
+    }
+  }
+
+  setLoop(loop) {
+    this._loop = loop;
   }
 
   get currentTime() {
@@ -73,9 +98,31 @@ export class AudioEngine {
     const t = this.currentTime;
     while (this.nextCueIndex < this.cues.length && t >= this.cues[this.nextCueIndex].time) {
       const cue = this.cues[this.nextCueIndex];
-      this.onCue(cue);
       this.nextCueIndex++;
+      this.onCue(cue);
     }
+  }
+
+  getTimeToNextCue(fallback = 60 / 130) {
+    if (!this.cues.length) return fallback;
+
+    const t = this.currentTime;
+    let index = this.nextCueIndex;
+    while (index < this.cues.length && this.cues[index].time <= t) {
+      index++;
+    }
+
+    if (index < this.cues.length) {
+      return Math.max(0.05, this.cues[index].time - t);
+    }
+
+    if (this.cues.length > 1) {
+      const last = this.cues[this.cues.length - 1].time;
+      const first = this.cues[0].time;
+      return Math.max(0.05, (last - first) / (this.cues.length - 1));
+    }
+
+    return fallback;
   }
 
   // Beat detection via bass energy. Call each frame.

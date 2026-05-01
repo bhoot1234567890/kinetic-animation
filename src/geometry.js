@@ -1,5 +1,17 @@
 // Polygon geometry: representation, cutting line generation, splitting
 
+export function generateCircle(cx, cy, radius, numPoints = 64) {
+  const points = [];
+  for (let i = 0; i < numPoints; i++) {
+    const angle = (Math.PI * 2 * i) / numPoints;
+    points.push({
+      x: cx + Math.cos(angle) * radius,
+      y: cy + Math.sin(angle) * radius,
+    });
+  }
+  return points;
+}
+
 export function generateRandomPolygon(cx, cy, avgRadius, sides) {
   const points = [];
   const numSides = sides || (5 + Math.floor(Math.random() * 4)); // 5-8 sides
@@ -14,29 +26,14 @@ export function generateRandomPolygon(cx, cy, avgRadius, sides) {
   return points;
 }
 
-export function generateCutLine(polygon) {
-  // Bounding box
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const p of polygon) {
-    if (p.x < minX) minX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y > maxY) maxY = p.y;
-  }
-  const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
+export function generateCutLine(polygon, center = null) {
+  const c = center || centroid(polygon);
 
-  // Random angle for the cut
   const angle = Math.random() * Math.PI;
   const dx = Math.cos(angle);
   const dy = Math.sin(angle);
 
-  // Point on the cut line: near center with slight random offset
-  const offset = (Math.random() - 0.5) * 0.3;
-  const px = cx + offset * (-dy) * (maxX - minX) * 0.5;
-  const py = cy + offset * dx * (maxY - minY) * 0.5;
-
-  return { px, py, dx, dy, angle };
+  return { px: c.x, py: c.y, dx, dy, angle };
 }
 
 // Split a convex/concave polygon by an infinite line defined by point (px,py) + direction (dx,dy)

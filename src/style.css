@@ -149,3 +149,30 @@ select option {
 #canvas canvas {
   display: block;
 }
+
+#loop-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  user-select: none;
+}
+
+#loop-checkbox {
+  accent-color: #FF2D55;
+  cursor: pointer;
+}
+
+#github-link {
+  display: flex;
+  align-items: center;
+  color: rgba(0, 0, 0, 0.35);
+  transition: color 0.15s ease;
+  margin-left: 4px;
+}
+
+#github-link:hover {
+  color: rgba(0, 0, 0, 0.7);
+}

@@ -1,14 +1,16 @@
 import './style.css';
+import gsap from 'gsap';
 import { SliceRenderer } from './renderer.js';
 import { AudioEngine } from './audio.js';
 import { generateDemoTrack } from './synth.js';
 import {
+  generateCircle,
   generateRandomPolygon,
   generateCutLine,
   splitPolygon,
   area,
-  centroid,
   rescalePolygon,
+  centroid,
 } from './geometry.js';
 
 // ── DOM ──
@@ -20,6 +22,7 @@ const resetBtn = document.getElementById('reset-btn');
 const modeSelect = document.getElementById('mode-select');
 const thresholdSlider = document.getElementById('threshold-slider');
 const thresholdValue = document.getElementById('threshold-value');
+const loopCheckbox = document.getElementById('loop-checkbox');
 
 // ── Engines ──
 const renderer = new SliceRenderer(canvasEl);
@@ -28,9 +31,11 @@ const audio = new AudioEngine();
 let isRunning = false;
 let animFrameId = null;
 let polygon = null;
+let polygonCenter = null;
 let cutCount = 0;
 const maxCuts = 4;
 let zooming = false;
+let zoomCall = null;
 
 // ── Cue sheet (130 BPM) ──
 const bpm = 130;
@@ -57,6 +62,10 @@ async function init() {
     audio.beatThreshold = parseInt(e.target.value);
     thresholdValue.textContent = e.target.value;
   });
+  loopCheckbox.addEventListener('change', () => {
+    audio.setLoop(loopCheckbox.checked);
+  });
+  handleModeChange();
 
   await loadDefaultTrack();
 }
@@ -74,16 +83,21 @@ function spawnPolygon() {
   const w = renderer.screen.width;
   const h = renderer.screen.height;
   const avgRadius = Math.min(w, h) * 0.32;
-  polygon = generateRandomPolygon(w / 2, h / 2, avgRadius, 6);
+  polygon = generateCircle(w / 2, h / 2, avgRadius, 64);
+  polygonCenter = centroid(polygon);
   renderer.drawPolygon(polygon);
 }
 
 // ── Core slice + zoom loop ──
 function doSlice() {
-  if (zooming) return;
+  if (zooming || !polygon) return;
 
-  const cutLine = generateCutLine(polygon);
-  const result = splitPolygon(polygon, cutLine);
+  let cutLine = null;
+  let result = null;
+  for (let attempt = 0; attempt < 6 && !result; attempt++) {
+    cutLine = generateCutLine(polygon, polygonCenter);
+    result = splitPolygon(polygon, cutLine);
+  }
   if (!result) return;
 
   const [left, right] = result;
@@ -91,36 +105,44 @@ function doSlice() {
 
   const bladeColor = renderer.nextBladeColor();
 
-  renderer.animateSlice(cutLine, flying, remaining, bladeColor);
+  // Compute time until next trigger so animations can adapt
+  const mode = modeSelect.value;
+  const maxAnimTime = mode === 'cues'
+    ? audio.getTimeToNextCue()
+    : beatDur; // beat detection: use expected interval
+
+  renderer.animateSlice(cutLine, flying, remaining, bladeColor, maxAnimTime);
   polygon = remaining;
   cutCount++;
 
   // After 4 cuts, zoom into the colored piece
   if (cutCount >= maxCuts) {
     cutCount = 0;
-    const target = renderer.coloredPiece;
+    const target = renderer.targetPiece;
 
     if (target) {
       zooming = true;
 
-      // Rescale that piece's shape to fill the screen
-      const w = renderer.screen.width;
-      const h = renderer.screen.height;
-      const newPoly = rescalePolygon(target.points, w / 2, h / 2, Math.min(w, h) * 0.32);
-
-      // Delay zoom slightly so the last cut animation plays
-      gsap.delayedCall(0.6, () => {
+      if (zoomCall) zoomCall.kill();
+      zoomCall = gsap.delayedCall(Math.max(0.12, 0.48 * renderer.lastTimeScale), () => {
+        const w = renderer.screen.width;
+        const h = renderer.screen.height;
+        const targetPoints = renderer.getVisiblePiecePoints(target);
+        const newPoly = rescalePolygon(targetPoints, w / 2, h / 2, Math.min(w, h) * 0.32);
         const tl = renderer.animateZoom(target, newPoly);
         tl.call(() => {
           polygon = newPoly;
+          polygonCenter = centroid(newPoly);
           zooming = false;
+          zoomCall = null;
         });
       });
     } else {
-      // No colored pieces — respawn fresh
-      gsap.delayedCall(0.6, () => {
+      if (zoomCall) zoomCall.kill();
+      zoomCall = gsap.delayedCall(Math.max(0.12, 0.48 * renderer.lastTimeScale), () => {
         renderer.reset();
         spawnPolygon();
+        zoomCall = null;
       });
     }
   }
@@ -172,7 +194,11 @@ function stop() {
   isRunning = false;
   playBtn.textContent = '▶ PLAY';
   playBtn.classList.remove('active');
-  if (animFrameId) cancelAnimationFrame(animFrameId);
+  if (animFrameId) {
+    cancelAnimationFrame(animFrameId);
+    animFrameId = null;
+  }
+  audio.stop();
   audio.onCue = null;
   audio.onBeat = null;
 }
@@ -186,6 +212,10 @@ function loop() {
 
 function handleReset() {
   stop();
+  if (zoomCall) {
+    zoomCall.kill();
+    zoomCall = null;
+  }
   renderer.reset();
   cutCount = 0;
   zooming = false;

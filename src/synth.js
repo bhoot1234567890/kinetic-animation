@@ -1,11 +1,11 @@
 // Synthesize a default beat track using Web Audio API offline rendering
-// Creates a ~10s electronic beat with kick, snare, hi-hat, bass synth
+// Creates a ~30s electronic beat with kick, snare, hi-hat, bass synth
 
 export async function generateDemoTrack(audioCtx) {
   const sampleRate = audioCtx.sampleRate;
   const bpm = 130;
   const beatDur = 60 / bpm;
-  const bars = 8;
+  const bars = 16;
   const beatsPerBar = 4;
   const totalBeats = bars * beatsPerBar;
   const duration = totalBeats * beatDur;
