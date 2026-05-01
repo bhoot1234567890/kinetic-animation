@@ -90,20 +90,18 @@ function doSlice() {
   const [flying, remaining] = area(left) < area(right) ? [left, right] : [right, left];
 
   const bladeColor = renderer.nextBladeColor();
-  const colorTheFlying = Math.random() < 0.5;
 
-  renderer.animateSlice(cutLine, flying, remaining, bladeColor, colorTheFlying);
+  renderer.animateSlice(cutLine, flying, remaining, bladeColor);
   polygon = remaining;
   cutCount++;
 
-  // After 4 cuts, zoom into a colored piece
+  // After 4 cuts, zoom into the colored piece
   if (cutCount >= maxCuts) {
     cutCount = 0;
-    const coloredPieces = renderer.cutPieces.filter(p => p.color !== null);
+    const target = renderer.coloredPiece;
 
-    if (coloredPieces.length > 0) {
+    if (target) {
       zooming = true;
-      const target = coloredPieces[Math.floor(Math.random() * coloredPieces.length)];
 
       // Rescale that piece's shape to fill the screen
       const w = renderer.screen.width;

@@ -13,7 +13,7 @@ export class SliceRenderer {
     this.activeGfx = null;
     this.polygonPoints = null;
     this.cutPieces = []; // track pieces for zoom target
-    this.cutCount = 0;
+    this.coloredPiece = null; // only 1 colored piece at a time
 
     // Colors
     this.bgColor = 0xf5f0e8;
@@ -101,33 +101,61 @@ export class SliceRenderer {
     return dots;
   }
 
-  // Draw a cut piece (stroke + dots, optionally filled with blade color)
+  // Draw a cut piece as Container: fill layer + stroke+dot layer
   _drawPiece(points, fillColor) {
-    const g = new Graphics();
+    const container = new Container();
     const flat = points.flatMap(p => [p.x, p.y]);
 
+    // Fill layer (separate so we can fade/remove it independently)
     if (fillColor !== null) {
-      g.poly(flat);
-      g.fill({ color: fillColor, alpha: 0.25 });
+      const fillGfx = new Graphics();
+      fillGfx.poly(flat);
+      fillGfx.fill({ color: fillColor, alpha: 0.3 });
+      container.addChild(fillGfx);
+      container._fillGfx = fillGfx;
     }
 
-    g.poly(flat);
-    g.stroke({ color: this.strokeColor, width: 1.5 });
-
+    // Stroke + dots layer
+    const strokeGfx = new Graphics();
+    strokeGfx.poly(flat);
+    strokeGfx.stroke({ color: this.strokeColor, width: 1.5 });
     const dots = this._getEdgeDots(points);
     for (const d of dots) {
-      g.circle(d.x, d.y, 2);
-      g.fill({ color: this.dotColor });
+      strokeGfx.circle(d.x, d.y, 2);
+      strokeGfx.fill({ color: this.dotColor });
     }
+    container.addChild(strokeGfx);
 
-    return g;
+    return container;
+  }
+
+  // Strip color from the previously colored piece
+  _uncolorPrevious() {
+    if (!this.coloredPiece) return;
+    const fillGfx = this.coloredPiece.container._fillGfx;
+    if (fillGfx) {
+      gsap.to(fillGfx, {
+        alpha: 0,
+        duration: 0.2,
+        ease: 'power2.out',
+        onComplete: () => {
+          if (fillGfx.parent) fillGfx.parent.removeChild(fillGfx);
+          fillGfx.destroy();
+        }
+      });
+    }
+    this.coloredPiece.color = null;
+    this.coloredPiece = null;
   }
 
   // Main animation: cut the polygon
-  animateSlice(cutLine, flyingPoints, remainingPoints, bladeColor, colorTheFlying) {
+  animateSlice(cutLine, flyingPoints, remainingPoints, bladeColor) {
     const tl = gsap.timeline();
     const w = this.app.screen.width;
     const h = this.app.screen.height;
+
+    // Strip color from previous colored piece
+    this._uncolorPrevious();
 
     // Remove current polygon
     if (this.activeGfx) {
@@ -156,29 +184,27 @@ export class SliceRenderer {
       flashLine.destroy();
     });
 
-    // 2. Draw flying piece
-    const flyingFill = colorTheFlying ? bladeColor : null;
-    const pieceGfx = this._drawPiece(flyingPoints, flyingFill);
-    this.piecesContainer.addChild(pieceGfx);
+    // 2. Draw flying piece — ALWAYS colored with blade color
+    const pieceContainer = this._drawPiece(flyingPoints, bladeColor);
+    this.piecesContainer.addChild(pieceContainer);
 
     const pcx = flyingPoints.reduce((s, p) => s + p.x, 0) / flyingPoints.length;
     const pcy = flyingPoints.reduce((s, p) => s + p.y, 0) / flyingPoints.length;
-    pieceGfx.pivot.set(pcx, pcy);
-    pieceGfx.x = pcx;
-    pieceGfx.y = pcy;
+    pieceContainer.pivot.set(pcx, pcy);
+    pieceContainer.x = pcx;
+    pieceContainer.y = pcy;
 
     // Fly direction: away from cut line
     const side = ((pcx - cutLine.px) * cutLine.dy - (pcy - cutLine.py) * cutLine.dx);
     const sign = side > 0 ? 1 : -1;
     const flyDist = 200 + Math.random() * 250;
-    const flyAngle = Math.atan2(cutLine.dy, cutLine.dx) * sign;
     const rotAngle = (6 + Math.random() * 14) * (Math.PI / 180) * sign;
 
     // 3. Screen shake
     this._shake();
 
     // 4. Animate piece flying
-    tl.to(pieceGfx, {
+    tl.to(pieceContainer, {
       x: pcx + sign * cutLine.dx * flyDist - sign * cutLine.dy * flyDist * 0.3,
       y: pcy + sign * cutLine.dy * flyDist + sign * cutLine.dx * flyDist * 0.3,
       rotation: rotAngle,
@@ -187,15 +213,16 @@ export class SliceRenderer {
       ease: 'power3.out',
     }, 0.03);
 
-    // Store piece data for potential zoom
+    // Store piece data — mark as colored
     const pieceData = {
-      gfx: pieceGfx,
+      container: pieceContainer,
       points: flyingPoints,
-      color: flyingFill,
+      color: bladeColor,
       cx: pcx,
       cy: pcy,
     };
     this.cutPieces.push(pieceData);
+    this.coloredPiece = pieceData;
 
     // 5. Draw remaining polygon (the main shape)
     this.drawPolygon(remainingPoints);
@@ -221,7 +248,7 @@ export class SliceRenderer {
     // Fade all other pieces
     for (const p of this.cutPieces) {
       if (p !== pieceData) {
-        tl.to(p.gfx, { alpha: 0, duration: 0.3 }, 0);
+        tl.to(p.container, { alpha: 0, duration: 0.3 }, 0);
       }
     }
 
@@ -276,6 +303,7 @@ export class SliceRenderer {
     for (const c of [...this.shapesContainer.children]) c.destroy();
     this.activeGfx = null;
     this.cutPieces = [];
+    this.coloredPiece = null;
   }
 
   reset() {
