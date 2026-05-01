@@ -1,6 +1,7 @@
 // Renderer v2: Paper aesthetic, unfilled shapes with grey stroke + dots, colored blades
 import { Application, Graphics, Container } from 'pixi.js';
 import gsap from 'gsap';
+import { splitPolygon, area } from './geometry.js';
 
 export class SliceRenderer {
   constructor(canvasEl) {
@@ -136,7 +137,7 @@ export class SliceRenderer {
     if (fillGfx) {
       gsap.to(fillGfx, {
         alpha: 0,
-        duration: 0.2,
+        duration: 0.3,
         ease: 'power2.out',
         onComplete: () => {
           if (fillGfx.parent) fillGfx.parent.removeChild(fillGfx);
@@ -146,6 +147,72 @@ export class SliceRenderer {
     }
     this.coloredPiece.color = null;
     this.coloredPiece = null;
+  }
+
+  // The blade line cuts through ALL existing pieces on screen
+  _cutExistingPieces(cutLine, bladeColor) {
+    const surviving = [];
+    for (const piece of this.cutPieces) {
+      const result = splitPolygon(piece.points, cutLine);
+      if (!result) {
+        surviving.push(piece);
+        continue;
+      }
+
+      const [left, right] = result;
+      const [smaller, bigger] = area(left) < area(right) ? [left, right] : [right, left];
+
+      // Remove the old piece container
+      this.piecesContainer.removeChild(piece.container);
+      piece.container.destroy();
+
+      // Animate the smaller half drifting away
+      const halfContainer = this._drawPiece(smaller, null);
+      this.piecesContainer.addChild(halfContainer);
+      const scx = smaller.reduce((s, p) => s + p.x, 0) / smaller.length;
+      const scy = smaller.reduce((s, p) => s + p.y, 0) / smaller.length;
+      halfContainer.pivot.set(scx, scy);
+      halfContainer.x = scx;
+      halfContainer.y = scy;
+
+      const side = ((scx - cutLine.px) * cutLine.dy - (scy - cutLine.py) * cutLine.dx);
+      const sign = side > 0 ? 1 : -1;
+      const driftDist = 40 + Math.random() * 40;
+      const rotAngle = (1 + Math.random() * 3) * (Math.PI / 180) * sign;
+
+      gsap.to(halfContainer, {
+        x: scx + sign * (-cutLine.dy) * driftDist,
+        y: scy + sign * cutLine.dx * driftDist,
+        rotation: rotAngle,
+        alpha: 0.3,
+        duration: 1.0,
+        ease: 'power1.out',
+      });
+
+      // Replace piece with the bigger half (stays roughly in place)
+      const biggerContainer = this._drawPiece(bigger, piece.color);
+      this.piecesContainer.addChild(biggerContainer);
+      const bcx = bigger.reduce((s, p) => s + p.x, 0) / bigger.length;
+      const bcy = bigger.reduce((s, p) => s + p.y, 0) / bigger.length;
+      biggerContainer.pivot.set(bcx, bcy);
+      biggerContainer.x = bcx;
+      biggerContainer.y = bcy;
+
+      const updatedPiece = {
+        container: biggerContainer,
+        points: bigger,
+        color: piece.color,
+        cx: bcx,
+        cy: bcy,
+      };
+      surviving.push(updatedPiece);
+
+      // If this was the colored piece, update reference
+      if (this.coloredPiece === piece) {
+        this.coloredPiece = updatedPiece;
+      }
+    }
+    this.cutPieces = surviving;
   }
 
   // Main animation: cut the polygon
@@ -175,14 +242,18 @@ export class SliceRenderer {
       cutLine.px + cutLine.dx * lineLen / 2,
       cutLine.py + cutLine.dy * lineLen / 2
     );
-    flashLine.stroke({ color: bladeColor, width: 3, cap: 'round' });
+    flashLine.stroke({ color: bladeColor, width: 1.5, cap: 'round' });
+    flashLine.alpha = 0.7;
     this.flashContainer.addChild(flashLine);
 
-    tl.to(flashLine, { alpha: 0, duration: 0.25, ease: 'power2.out' });
+    tl.to(flashLine, { alpha: 0, duration: 0.4, ease: 'power2.out' });
     tl.call(() => {
       this.flashContainer.removeChild(flashLine);
       flashLine.destroy();
     });
+
+    // 1b. Blade cuts through existing pieces
+    this._cutExistingPieces(cutLine, bladeColor);
 
     // 2. Draw flying piece — ALWAYS colored with blade color
     const pieceContainer = this._drawPiece(flyingPoints, bladeColor);
@@ -194,24 +265,21 @@ export class SliceRenderer {
     pieceContainer.x = pcx;
     pieceContainer.y = pcy;
 
-    // Fly direction: away from cut line
+    // Drift direction: perpendicular away from cut line
     const side = ((pcx - cutLine.px) * cutLine.dy - (pcy - cutLine.py) * cutLine.dx);
     const sign = side > 0 ? 1 : -1;
-    const flyDist = 200 + Math.random() * 250;
-    const rotAngle = (6 + Math.random() * 14) * (Math.PI / 180) * sign;
+    const driftDist = 80 + Math.random() * 60;
+    const rotAngle = (2 + Math.random() * 4) * (Math.PI / 180) * sign;
 
-    // 3. Screen shake
-    this._shake();
-
-    // 4. Animate piece flying
+    // 3. Animate piece drifting away smoothly
     tl.to(pieceContainer, {
-      x: pcx + sign * cutLine.dx * flyDist - sign * cutLine.dy * flyDist * 0.3,
-      y: pcy + sign * cutLine.dy * flyDist + sign * cutLine.dx * flyDist * 0.3,
+      x: pcx + sign * (-cutLine.dy) * driftDist,
+      y: pcy + sign * cutLine.dx * driftDist,
       rotation: rotAngle,
       alpha: 0.7,
-      duration: 0.7,
-      ease: 'power3.out',
-    }, 0.03);
+      duration: 1.2,
+      ease: 'power1.out',
+    }, 0.1);
 
     // Store piece data — mark as colored
     const pieceData = {
@@ -226,17 +294,6 @@ export class SliceRenderer {
 
     // 5. Draw remaining polygon (the main shape)
     this.drawPolygon(remainingPoints);
-
-    // Scale punch
-    if (this.activeGfx) {
-      const rcx = remainingPoints.reduce((s, p) => s + p.x, 0) / remainingPoints.length;
-      const rcy = remainingPoints.reduce((s, p) => s + p.y, 0) / remainingPoints.length;
-      this.activeGfx.pivot.set(rcx, rcy);
-      this.activeGfx.x = rcx;
-      this.activeGfx.y = rcy;
-      this.activeGfx.scale.set(1.03);
-      tl.to(this.activeGfx.scale, { x: 1, y: 1, duration: 0.3, ease: 'power2.out' }, 0.02);
-    }
 
     return tl;
   }
@@ -314,22 +371,6 @@ export class SliceRenderer {
     this.stage.scale.set(1);
     this.stage.x = 0;
     this.stage.y = 0;
-  }
-
-  _shake() {
-    const intensity = 3 + Math.random() * 3;
-    const ox = this.stage.x;
-    const oy = this.stage.y;
-    gsap.to(this.stage, {
-      x: ox + (Math.random() - 0.5) * intensity,
-      y: oy + (Math.random() - 0.5) * intensity,
-      duration: 0.035,
-      yoyo: true,
-      repeat: 3,
-      onComplete: () => {
-        gsap.to(this.stage, { x: ox, y: oy, duration: 0.08 });
-      }
-    });
   }
 
   get screen() {
